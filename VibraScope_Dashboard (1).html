@@ -1,0 +1,568 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>VibraScope — USB Serial Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Rajdhani:wght@500;600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg-void:#0B0D10; --bg-panel:#15181D; --bg-raised:#1C2027;
+    --border:#262B33; --border-bright:#363D48;
+    --text-1:#E7EAEE; --text-2:#939BAA; --text-3:#5C6472;
+    --accent:#F5A623; --accent-cyan:#43C6E0;
+    --ok:#35D399; --warn:#F5A623; --high:#FF5A5F;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; font-family:'Inter',sans-serif; background:var(--bg-void); color:var(--text-1);
+    min-height:100vh; padding:20px;
+    background-image:
+      radial-gradient(circle at 15% 0%, rgba(67,198,224,0.06), transparent 40%),
+      radial-gradient(circle at 85% 100%, rgba(245,166,35,0.05), transparent 45%);
+  }
+  .mono { font-family:'IBM Plex Mono',monospace; }
+  .display { font-family:'Rajdhani',sans-serif; }
+
+  .topbar { display:flex; align-items:center; justify-content:space-between; padding:12px 18px; border:1px solid var(--border); border-radius:10px;
+    background:linear-gradient(180deg, var(--bg-raised), var(--bg-panel)); margin-bottom:16px; flex-wrap:wrap; gap:10px; }
+  .brand { display:flex; align-items:center; gap:12px; }
+  .brand-mark { width:36px; height:36px; border-radius:8px; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(circle at 30% 30%, var(--accent-cyan), #1a5b6b); box-shadow:0 0 14px rgba(67,198,224,0.4); font-size:18px; }
+  .brand-name { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:20px; letter-spacing:0.5px; }
+  .brand-sub { font-size:11px; color:var(--text-3); letter-spacing:1.2px; text-transform:uppercase; }
+  .topbar-right { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .conn { display:flex; align-items:center; gap:8px; padding:6px 12px; border-radius:20px; border:1px solid var(--border); background:var(--bg-void); }
+  .conn-dot { width:8px; height:8px; border-radius:50%; animation:pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 0%,100%{opacity:1;} 50%{opacity:.55;} }
+  .clock { font-size:13px; color:var(--text-2); }
+
+  .grid { display:grid; grid-template-columns: 1.3fr 1fr; gap:16px; margin-bottom:16px; }
+  .row3 { display:grid; grid-template-columns:repeat(3,1fr); gap:16px; margin-bottom:16px; }
+  .row2 { display:grid; grid-template-columns:1.4fr 1fr; gap:16px; margin-bottom:16px; }
+  @media (max-width: 920px) { .grid, .row3, .row2 { grid-template-columns:1fr; } }
+
+  .panel { border:1px solid var(--border); border-radius:12px; background:var(--bg-panel); overflow:hidden; display:flex; flex-direction:column; margin-bottom:16px; }
+  .panel-head { display:flex; align-items:center; justify-content:space-between; padding:14px 16px 10px; border-bottom:1px solid var(--border); }
+  .panel-body { padding:14px 16px 16px; flex:1; }
+  .eyebrow { font-size:10.5px; letter-spacing:1.4px; color:var(--text-3); text-transform:uppercase; margin-bottom:2px; }
+  .panel-title { font-family:'Rajdhani',sans-serif; font-weight:600; font-size:15.5px; letter-spacing:0.3px; }
+
+  .health { display:flex; align-items:center; gap:22px; flex-wrap:wrap; }
+  .health-badge { display:flex; align-items:center; gap:10px; padding:14px 18px; border-radius:10px; border:1px solid var(--border-bright); }
+  .health-icon { font-size:26px; line-height:1; }
+  .health-label { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:26px; letter-spacing:0.5px; }
+  .health-desc { font-size:12px; color:var(--text-2); margin-top:2px; max-width:340px; }
+  .pulse { animation:pulse 1.6s ease-in-out infinite; }
+
+  .gauge { width:210px; }
+  .gauge-label { font-family:'IBM Plex Mono',monospace; font-size:9px; fill:var(--text-2); letter-spacing:1px; }
+
+  .metric-label { font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:1px; margin-bottom:6px; }
+  .metric-value { font-family:'IBM Plex Mono',monospace; font-size:30px; font-weight:600; line-height:1; }
+  .metric-unit { font-size:14px; color:var(--text-3); margin-left:4px; }
+  .metric-sub { font-size:11.5px; color:var(--text-2); margin-top:6px; }
+
+  .btn { display:inline-flex; align-items:center; gap:8px; padding:9px 16px; border-radius:8px; font-family:'Rajdhani',sans-serif; font-weight:600; font-size:14px; letter-spacing:0.3px; border:1px solid var(--border-bright); background:var(--bg-raised); color:var(--text-1); cursor:pointer; transition:all .15s; }
+  .btn:hover:not(:disabled) { border-color:var(--accent-cyan); box-shadow:0 0 0 1px rgba(67,198,224,0.25); }
+  .btn:disabled { opacity:0.5; cursor:not-allowed; }
+  .btn-primary { background:linear-gradient(180deg,#2b8f6f,#1f6f56); border-color:#2b8f6f; }
+  .btn-stop { background:linear-gradient(180deg,#8f3a3a,#6f2626); border-color:#8f3a3a; }
+  .btn-sm { padding:6px 11px; font-size:12.5px; }
+
+  .devinfo { display:grid; grid-template-columns:1fr 1fr; gap:10px 16px; font-size:12.5px; }
+  .devinfo dt { color:var(--text-3); margin:0; }
+  .devinfo dd { margin:2px 0 0; font-family:'IBM Plex Mono',monospace; color:var(--text-1); }
+
+  .baseline-row { display:flex; align-items:center; justify-content:space-between; padding:9px 0; border-bottom:1px dashed var(--border); font-size:13px; }
+  .baseline-row:last-child { border-bottom:none; }
+  .baseline-vals { display:flex; gap:16px; font-family:'IBM Plex Mono',monospace; }
+  .baseline-cur { color:var(--text-1); }
+  .baseline-base { color:var(--text-3); }
+
+  .alerts { display:flex; flex-direction:column; gap:8px; max-height:220px; overflow-y:auto; }
+  .alert { display:flex; gap:10px; align-items:flex-start; font-size:12.5px; padding:8px 10px; border-radius:7px; background:var(--bg-raised); border:1px solid var(--border); }
+  .alert-dot { width:7px; height:7px; border-radius:50%; margin-top:4px; flex-shrink:0; }
+  .alert-msg { color:var(--text-1); }
+  .alert-time { color:var(--text-3); font-family:'IBM Plex Mono',monospace; font-size:10.5px; margin-top:2px; }
+  .alerts::-webkit-scrollbar { width:6px; }
+  .alerts::-webkit-scrollbar-thumb { background:var(--border-bright); border-radius:3px; }
+
+  .footer { display:flex; align-items:center; justify-content:space-between; padding:14px 18px; border:1px solid var(--border); border-radius:10px; background:var(--bg-panel); flex-wrap:wrap; gap:12px; }
+  .footer-hint { font-size:11.5px; color:var(--text-3); display:flex; align-items:center; gap:6px; }
+  .errbar { background:rgba(255,90,95,0.12); border:1px solid var(--high); color:var(--high); border-radius:8px; padding:9px 14px; font-size:12.5px; margin-bottom:16px; display:none; }
+  .chart-wrap { height:190px; }
+  .chart-wrap.short { height:170px; }
+
+  .unsupported { max-width:480px; margin:120px auto; text-align:center; border:1px solid var(--border); border-radius:12px; padding:36px 30px; background:var(--bg-panel); }
+  .unsupported .icon { font-size:34px; margin-bottom:14px; }
+  .unsupported h2 { font-family:'Rajdhani',sans-serif; font-weight:700; font-size:20px; margin:0 0 8px; }
+  .unsupported p { font-size:13.5px; color:var(--text-2); line-height:1.5; }
+</style>
+</head>
+<body>
+
+<div id="unsupportedPanel" class="unsupported" style="display:none;">
+  <div class="icon">🚫</div>
+  <h2>Web Serial not available</h2>
+  <p>This dashboard connects directly to VibraScope over USB using the Web Serial API, which only works in <b>Chrome or Edge on desktop</b> — not Safari, Firefox, or mobile browsers. Open this file in Chrome.</p>
+</div>
+
+<div id="app" style="display:none;">
+
+  <div class="topbar">
+    <div class="brand">
+      <div class="brand-mark">⏱</div>
+      <div>
+        <div class="brand-name">VIBRASCOPE</div>
+        <div class="brand-sub">USB Serial · Portable Machine Vibration Diagnostics</div>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="conn">
+        <span id="connDot" class="conn-dot" style="background:var(--text-3)"></span>
+        <span id="connLabel" class="mono" style="font-size:12px;">NOT CONNECTED</span>
+      </div>
+      <button id="connectBtn" class="btn btn-sm btn-primary">🔌 Connect via USB</button>
+      <button id="disconnectBtn" class="btn btn-sm btn-stop" style="display:none;">Disconnect</button>
+      <div id="clock" class="clock mono"></div>
+    </div>
+  </div>
+
+  <div id="errBar" class="errbar"></div>
+
+  <div class="grid">
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Diagnosis</div><div class="panel-title">Machine Health Status</div></div></div>
+      <div class="panel-body">
+        <div class="health">
+          <div class="health-badge" id="healthBadge" style="border-color:var(--text-3);">
+            <span id="healthIcon" class="health-icon">🔌</span>
+            <div>
+              <div class="health-label" id="healthLabel" style="color:var(--text-3);">NOT CONNECTED</div>
+              <div class="health-desc" id="healthDesc">Click "Connect via USB" and pick your ESP32's COM port.</div>
+            </div>
+          </div>
+          <svg viewBox="0 0 240 150" class="gauge" id="gaugeSvg">
+            <defs>
+              <linearGradient id="gaugeArc" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stop-color="#35D399"/><stop offset="48%" stop-color="#35D399"/>
+                <stop offset="58%" stop-color="#F5A623"/><stop offset="78%" stop-color="#F5A623"/>
+                <stop offset="86%" stop-color="#FF5A5F"/><stop offset="100%" stop-color="#FF5A5F"/>
+              </linearGradient>
+            </defs>
+            <path d="M 30 128 A 90 90 0 1 1 210 128" fill="none" stroke="url(#gaugeArc)" stroke-width="10" stroke-linecap="round" opacity="0.9"/>
+            <g id="gaugeTicks"></g>
+            <g id="needleGroup" style="transform:rotate(-110deg); transform-origin:120px 128px; transition:transform 0.6s cubic-bezier(.4,1.4,.4,1);">
+              <line x1="120" y1="128" x2="120" y2="52" id="needle" stroke="var(--text-3)" stroke-width="3" stroke-linecap="round"/>
+            </g>
+            <circle cx="120" cy="128" r="7" fill="#0D0F12" id="needleHub" stroke="var(--text-3)" stroke-width="3"/>
+            <text x="120" y="146" text-anchor="middle" class="gauge-label" id="gaugeText">SEVERITY ×0.0</text>
+          </svg>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Firmware</div><div class="panel-title">Device Information</div></div></div>
+      <div class="panel-body">
+        <dl class="devinfo">
+          <div><dt>Sampling Rate</dt><dd>500 Hz</dd></div>
+          <div><dt>FFT Size</dt><dd>256-pt</dd></div>
+          <div><dt>Bin Resolution</dt><dd>1.95 Hz/bin</dd></div>
+          <div><dt>Baud Rate</dt><dd>115200</dd></div>
+          <div><dt>Link</dt><dd id="linkStatus" style="color:var(--text-3);">Not connected</dd></div>
+          <div><dt>Sensor</dt><dd>MPU6050 · Z-axis</dd></div>
+        </dl>
+      </div>
+    </div>
+  </div>
+
+  <div class="row3">
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Time Domain</div><div class="panel-title">RMS</div></div></div>
+      <div class="panel-body">
+        <div class="metric-label">Root Mean Square</div>
+        <div class="metric-value" id="rmsValue" style="color:var(--accent-cyan);">0.00<span class="metric-unit">m/s²</span></div>
+        <div class="metric-sub" id="rmsSub">no baseline set</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Time Domain</div><div class="panel-title">Peak</div></div></div>
+      <div class="panel-body">
+        <div class="metric-label">Peak Amplitude</div>
+        <div class="metric-value" id="peakValue" style="color:var(--accent);">0.00<span class="metric-unit">m/s²</span></div>
+        <div class="metric-sub" id="peakSub">no baseline set</div>
+      </div>
+    </div>
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Frequency Domain</div><div class="panel-title">Dominant Frequency</div></div></div>
+      <div class="panel-body">
+        <div class="metric-label">Rotation-linked Peak</div>
+        <div class="metric-value" id="freqValue" style="color:var(--ok);">0.0<span class="metric-unit">Hz</span></div>
+        <div class="metric-sub" id="freqSub">no baseline set</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Live</div><div class="panel-title">Acceleration vs Time</div></div></div>
+    <div class="panel-body"><div class="chart-wrap"><canvas id="accelChart"></canvas></div></div>
+  </div>
+
+  <div class="row2">
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Frequency Domain</div><div class="panel-title">FFT Frequency Spectrum</div></div></div>
+      <div class="panel-body"><div class="chart-wrap"><canvas id="fftChart"></canvas></div></div>
+    </div>
+    <div class="panel" style="margin-bottom:0;">
+      <div class="panel-head"><div><div class="eyebrow">Reference</div><div class="panel-title">Current vs Baseline</div></div></div>
+      <div class="panel-body" id="baselinePanel">
+        <div style="font-size:12.5px; color:var(--text-2); display:flex; align-items:center; gap:8px;">→ No baseline yet — calibrate on the device.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">History</div><div class="panel-title">Vibration Trend</div></div></div>
+    <div class="panel-body"><div class="chart-wrap short"><canvas id="trendChart"></canvas></div></div>
+  </div>
+
+  <div class="panel">
+    <div class="panel-head"><div><div class="eyebrow">Log</div><div class="panel-title">Alert / Event History</div></div><span>🔔</span></div>
+    <div class="panel-body">
+      <div class="alerts" id="alertsList">
+        <div style="font-size:12.5px; color:var(--text-3);">No events yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footer">
+    <span class="footer-hint mono" id="statusFooter">status: WAITING</span>
+    <div class="footer-hint"><span>⚙</span><span id="footerHint">Calibrate and Start/Stop are controlled on the physical device</span></div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================================
+// CONFIG
+// ============================================================================
+const SAMPLE_RATE_HZ = 500, NYQUIST_HZ = 250, FFT_BINS_SHOWN = 46;
+const ACCEL_WINDOW = 140, TREND_WINDOW = 36, ALERT_CAP = 10;
+const BAUD_RATE = 115200;
+
+const STATUS_META = {
+  "WAITING":        { color:"#8B93A1", glow:"rgba(139,147,161,0.35)", label:"NOT CONNECTED", icon:"🔌" },
+  "NO BASELINE":    { color:"#8B93A1", glow:"rgba(139,147,161,0.35)", label:"NO BASELINE",    icon:"⚠" },
+  "IDLE":           { color:"#8B93A1", glow:"rgba(139,147,161,0.35)", label:"IDLE",           icon:"◌" },
+  "STARTING":       { color:"#8B93A1", glow:"rgba(139,147,161,0.35)", label:"STARTING",       icon:"◌" },
+  "NORMAL":         { color:"#35D399", glow:"rgba(53,211,153,0.45)",  label:"NORMAL",         icon:"✓" },
+  "WARNING":        { color:"#F5A623", glow:"rgba(245,166,35,0.45)",  label:"WARNING",        icon:"⚠" },
+  "HIGH VIBRATION": { color:"#FF5A5F", glow:"rgba(255,90,95,0.5)",    label:"HIGH VIBRATION", icon:"⚠" },
+};
+const STATUS_DESC = {
+  "WAITING": 'Click "Connect via USB" and pick your ESP32\'s COM port.',
+  "NO BASELINE": "Calibrate on the device with the machine running to set a baseline.",
+  "IDLE": "Device connected. Press Start on VibraScope to begin acquisition.",
+  "STARTING": "Device connected. Press Start on VibraScope to begin acquisition.",
+  "NORMAL": "Vibration signature matches the healthy baseline.",
+  "WARNING": "Deviation detected — inspect mounting, balance, or alignment.",
+  "HIGH VIBRATION": "Significant deviation — stop the machine and inspect immediately.",
+};
+
+// ============================================================================
+// STATE
+// ============================================================================
+let port = null, reader = null, keepReading = false;
+let baseline = null, live = { rms:0, peak:0, frequency:0, timestamp:0 };
+let status = "WAITING", tCounter = 0, prevStatus = "WAITING";
+let accelData = [], fftData = [], trendData = [], alerts = [];
+
+// ============================================================================
+// UI SETUP
+// ============================================================================
+if (!("serial" in navigator)) {
+  document.getElementById("unsupportedPanel").style.display = "block";
+} else {
+  document.getElementById("app").style.display = "block";
+  initGaugeTicks();
+  initCharts();
+  updateClock();
+  setInterval(updateClock, 1000);
+  document.getElementById("connectBtn").addEventListener("click", connect);
+  document.getElementById("disconnectBtn").addEventListener("click", disconnect);
+  navigator.serial.addEventListener("disconnect", (e) => { if (e.target === port) disconnect(); });
+  renderStatus();
+}
+
+function updateClock() {
+  document.getElementById("clock").textContent = new Date().toLocaleTimeString([], { hour12:false });
+}
+
+function initGaugeTicks() {
+  const g = document.getElementById("gaugeTicks");
+  for (let i = 0; i < 12; i++) {
+    const a = -110 + (i * 220) / 11, rad = a * Math.PI / 180;
+    const x1 = 120 + Math.sin(rad)*78, y1 = 128 - Math.cos(rad)*78;
+    const x2 = 120 + Math.sin(rad)*68, y2 = 128 - Math.cos(rad)*68;
+    const line = document.createElementNS("http://www.w3.org/2000/svg","line");
+    line.setAttribute("x1",x1); line.setAttribute("y1",y1);
+    line.setAttribute("x2",x2); line.setAttribute("y2",y2);
+    line.setAttribute("stroke","#4A5160"); line.setAttribute("stroke-width","2");
+    g.appendChild(line);
+  }
+}
+
+// ============================================================================
+// CHARTS (Chart.js)
+// ============================================================================
+let accelChart, fftChart, trendChart;
+function initCharts() {
+  const gridColor = "#20242B", tickColor = "#5C6472";
+  const commonScales = {
+    x: { grid:{color:gridColor, drawTicks:false}, ticks:{display:false}, border:{color:"#262B33"} },
+    y: { grid:{color:gridColor, drawTicks:false}, ticks:{color:tickColor, font:{size:10}}, border:{color:"#262B33"} },
+  };
+  accelChart = new Chart(document.getElementById("accelChart"), {
+    type:"line",
+    data:{ labels:[], datasets:[{ label:"Accel Z", data:[], borderColor:"#43C6E0", borderWidth:1.6, pointRadius:0, tension:0.3 }] },
+    options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}}, scales:commonScales }
+  });
+  fftChart = new Chart(document.getElementById("fftChart"), {
+    type:"bar",
+    data:{ labels:[], datasets:[{ label:"Magnitude", data:[], backgroundColor:"#F5A623", borderRadius:2 }] },
+    options:{ responsive:true, maintainAspectRatio:false, animation:false, plugins:{legend:{display:false}},
+      scales:{ x:{...commonScales.x, ticks:{color:tickColor, font:{size:10}, maxTicksLimit:6, display:true}}, y:commonScales.y } }
+  });
+  trendChart = new Chart(document.getElementById("trendChart"), {
+    type:"line",
+    data:{ labels:[], datasets:[
+      { label:"RMS", data:[], borderColor:"#43C6E0", backgroundColor:"rgba(67,198,224,0.18)", fill:true, borderWidth:1.8, pointRadius:0, tension:0.3 },
+      { label:"Peak", data:[], borderColor:"#F5A623", borderWidth:1.2, pointRadius:0, tension:0.3 },
+    ]},
+    options:{ responsive:true, maintainAspectRatio:false, animation:false,
+      plugins:{legend:{display:true, position:"bottom", labels:{color:"#939BAA", font:{size:10}, boxWidth:10}}},
+      scales:commonScales }
+  });
+}
+
+// ============================================================================
+// SERIAL CONNECTION
+// ============================================================================
+async function connect() {
+  hideError();
+  document.getElementById("connectBtn").disabled = true;
+  document.getElementById("connectBtn").textContent = "Selecting port…";
+  try {
+    port = await navigator.serial.requestPort();
+    await port.open({ baudRate: BAUD_RATE });
+    keepReading = true;
+    setConnectedUI(true);
+    status = "IDLE"; prevStatus = "IDLE";
+    pushAlert("conn", "Connected to VibraScope over USB");
+    renderStatus();
+    readLoop();
+  } catch (e) {
+    if (e.name !== "NotFoundError") showError(e.message || "Couldn't open that port.");
+  } finally {
+    document.getElementById("connectBtn").disabled = false;
+    document.getElementById("connectBtn").textContent = "🔌 Connect via USB";
+  }
+}
+
+async function disconnect() {
+  keepReading = false;
+  try { reader && reader.cancel(); } catch(e) {}
+  try { port && await port.close(); } catch(e) {}
+  port = null;
+  setConnectedUI(false);
+  status = "WAITING";
+  pushAlert("conn", "Disconnected");
+  renderStatus();
+}
+
+function setConnectedUI(isConnected) {
+  document.getElementById("connDot").style.background = isConnected ? "var(--ok)" : "var(--text-3)";
+  document.getElementById("connLabel").textContent = isConnected ? "CONNECTED" : "NOT CONNECTED";
+  document.getElementById("connectBtn").style.display = isConnected ? "none" : "inline-flex";
+  document.getElementById("disconnectBtn").style.display = isConnected ? "inline-flex" : "none";
+  document.getElementById("linkStatus").textContent = isConnected ? "USB Serial · OK" : "Not connected";
+  document.getElementById("linkStatus").style.color = isConnected ? "var(--ok)" : "var(--text-3)";
+  document.getElementById("footerHint").textContent = isConnected
+    ? "Reading live JSON over USB Serial"
+    : "Calibrate and Start/Stop are controlled on the physical device";
+}
+
+async function readLoop() {
+  const textDecoder = new TextDecoderStream();
+  const readableClosed = port.readable.pipeTo(textDecoder.writable);
+  reader = textDecoder.readable.getReader();
+  let buffer = "";
+  try {
+    while (keepReading) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += value;
+      let idx;
+      while ((idx = buffer.indexOf("\n")) >= 0) {
+        const line = buffer.slice(0, idx).trim();
+        buffer = buffer.slice(idx + 1);
+        if (line.startsWith("JSON:")) {
+          try { processPacket(JSON.parse(line.slice(5))); } catch(e) {}
+        }
+      }
+    }
+  } catch (e) {
+    if (keepReading) showError("Lost connection to the device.");
+  } finally {
+    try { reader.releaseLock(); } catch(e) {}
+    try { await readableClosed; } catch(e) {}
+  }
+}
+
+function showError(msg) { const el = document.getElementById("errBar"); el.textContent = msg; el.style.display = "block"; }
+function hideError() { document.getElementById("errBar").style.display = "none"; }
+
+// ============================================================================
+// PACKET PROCESSING
+// ============================================================================
+function processPacket(packet) {
+  tCounter++;
+  const t = tCounter;
+  const rms = Number(packet.rms) || 0, peak = Number(packet.peak) || 0, frequency = Number(packet.frequency) || 0;
+  const st = packet.status || "IDLE";
+
+  live = { rms, peak, frequency, timestamp: packet.timestamp };
+  status = st;
+  if (packet.baseline_rms != null) {
+    baseline = { rms: packet.baseline_rms, peak: packet.baseline_peak, frequency: packet.baseline_frequency };
+  }
+
+  if (prevStatus !== st) {
+    if (st === "WARNING") pushAlert("warning", `Status changed to WARNING (RMS ${rms.toFixed(2)} m/s²)`);
+    else if (st === "HIGH VIBRATION") pushAlert("high", `HIGH VIBRATION detected — RMS ${rms.toFixed(2)} m/s², Peak ${peak.toFixed(2)} m/s²`);
+    else if (st === "NORMAL" && prevStatus !== "IDLE" && prevStatus !== "WAITING") pushAlert("normal", "Status returned to NORMAL");
+    prevStatus = st;
+  }
+
+  // illustrative acceleration waveform
+  const f = frequency || 1;
+  for (let i = 0; i < 8; i++) {
+    const phase = (t*8 + i) / (SAMPLE_RATE_HZ / f);
+    const val = rms * Math.SQRT2 * Math.sin(phase * 2 * Math.PI) + (Math.random()-0.5) * rms * 0.4;
+    accelData.push(Number(val.toFixed(3)));
+  }
+  accelData = accelData.slice(-ACCEL_WINDOW);
+
+  // illustrative FFT spectrum peaked at real dominant frequency
+  fftData = [];
+  const fftLabels = [];
+  for (let b = 0; b < FFT_BINS_SHOWN; b++) {
+    const fb = b * (NYQUIST_HZ / FFT_BINS_SHOWN);
+    let mag = Math.max(0, 1 - Math.abs(fb-frequency)/9) * (rms*22);
+    mag += Math.max(0, 1 - Math.abs(fb-frequency*2)/7) * (rms*9) * (rms>0.5?1:0.3);
+    mag += Math.random()*0.5;
+    fftData.push(Number(mag.toFixed(2)));
+    fftLabels.push(Math.round(fb));
+  }
+
+  trendData.push({ rms, peak });
+  trendData = trendData.slice(-TREND_WINDOW);
+
+  renderStatus();
+  renderMetrics();
+  renderBaseline();
+  renderCharts(fftLabels);
+}
+
+function pushAlert(sev, message) {
+  alerts.unshift({ id:Date.now()+Math.random(), time:new Date(), sev, message });
+  alerts = alerts.slice(0, ALERT_CAP);
+  renderAlerts();
+}
+
+// ============================================================================
+// RENDERING
+// ============================================================================
+function renderStatus() {
+  const meta = STATUS_META[status] || STATUS_META.IDLE;
+  document.getElementById("healthBadge").style.borderColor = meta.color;
+  document.getElementById("healthBadge").style.boxShadow = `0 0 24px ${meta.glow}`;
+  document.getElementById("healthIcon").textContent = meta.icon;
+  document.getElementById("healthIcon").className = "health-icon" + (["WAITING","IDLE","NORMAL","NO BASELINE","STARTING"].includes(status) ? "" : " pulse");
+  const labelEl = document.getElementById("healthLabel");
+  labelEl.textContent = meta.label; labelEl.style.color = meta.color;
+  document.getElementById("healthDesc").textContent = STATUS_DESC[status] || "";
+  document.getElementById("statusFooter").textContent = "status: " + status;
+
+  const rmsRatio = (baseline && baseline.rms > 0.0001) ? live.rms / baseline.rms : 0;
+  const clamped = Math.max(0, Math.min(rmsRatio, 3));
+  const angle = -110 + (clamped/3)*220;
+  document.getElementById("needleGroup").style.transform = `rotate(${angle}deg)`;
+  document.getElementById("needle").setAttribute("stroke", meta.color);
+  document.getElementById("needleHub").setAttribute("stroke", meta.color);
+  document.getElementById("gaugeText").textContent = `SEVERITY ×${clamped.toFixed(1)}`;
+}
+
+function renderMetrics() {
+  document.getElementById("rmsValue").innerHTML = live.rms.toFixed(2) + '<span class="metric-unit">m/s²</span>';
+  document.getElementById("peakValue").innerHTML = live.peak.toFixed(2) + '<span class="metric-unit">m/s²</span>';
+  document.getElementById("freqValue").innerHTML = live.frequency.toFixed(1) + '<span class="metric-unit">Hz</span>';
+  if (baseline) {
+    const ratio = baseline.rms > 0.0001 ? live.rms/baseline.rms : 0;
+    document.getElementById("rmsSub").textContent = `baseline ${baseline.rms.toFixed(2)} · ×${ratio.toFixed(2)}`;
+    document.getElementById("peakSub").textContent = `baseline ${baseline.peak.toFixed(2)}`;
+    document.getElementById("freqSub").textContent = `baseline ${baseline.frequency.toFixed(1)} Hz`;
+  } else {
+    document.getElementById("rmsSub").textContent = "no baseline set";
+    document.getElementById("peakSub").textContent = "no baseline set";
+    document.getElementById("freqSub").textContent = "no baseline set";
+  }
+}
+
+function renderBaseline() {
+  const el = document.getElementById("baselinePanel");
+  if (!baseline) {
+    el.innerHTML = '<div style="font-size:12.5px; color:var(--text-2); display:flex; align-items:center; gap:8px;">→ No baseline yet — calibrate on the device.</div>';
+    return;
+  }
+  el.innerHTML = `
+    <div class="baseline-row"><span style="color:var(--text-2)">RMS</span>
+      <span class="baseline-vals"><span class="baseline-cur">${live.rms.toFixed(2)}</span><span class="baseline-base">/ ${baseline.rms.toFixed(2)}</span></span></div>
+    <div class="baseline-row"><span style="color:var(--text-2)">Peak</span>
+      <span class="baseline-vals"><span class="baseline-cur">${live.peak.toFixed(2)}</span><span class="baseline-base">/ ${baseline.peak.toFixed(2)}</span></span></div>
+    <div class="baseline-row"><span style="color:var(--text-2)">Frequency</span>
+      <span class="baseline-vals"><span class="baseline-cur">${live.frequency.toFixed(1)}</span><span class="baseline-base">/ ${baseline.frequency.toFixed(1)} Hz</span></span></div>
+    <div style="margin-top:10px; font-size:11px; color:var(--text-3);">current / baseline — reported directly by the device</div>`;
+}
+
+function renderCharts(fftLabels) {
+  accelChart.data.labels = accelData.map((_, i) => i);
+  accelChart.data.datasets[0].data = accelData;
+  accelChart.update("none");
+
+  fftChart.data.labels = fftLabels;
+  fftChart.data.datasets[0].data = fftData;
+  fftChart.update("none");
+
+  trendChart.data.labels = trendData.map((_, i) => i);
+  trendChart.data.datasets[0].data = trendData.map(d => d.rms);
+  trendChart.data.datasets[1].data = trendData.map(d => d.peak);
+  trendChart.update("none");
+}
+
+function renderAlerts() {
+  const el = document.getElementById("alertsList");
+  if (alerts.length === 0) { el.innerHTML = '<div style="font-size:12.5px; color:var(--text-3);">No events yet.</div>'; return; }
+  el.innerHTML = alerts.map(a => {
+    const c = a.sev==="high" ? "var(--high)" : a.sev==="warning" ? "var(--warn)" : a.sev==="conn" ? "var(--accent-cyan)" : "var(--ok)";
+    return `<div class="alert"><span class="alert-dot" style="background:${c}"></span>
+      <div><div class="alert-msg">${a.message}</div><div class="alert-time">${a.time.toLocaleTimeString([], {hour12:false})}</div></div></div>`;
+  }).join("");
+}
+</script>
+</body>
+</html>
