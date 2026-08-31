@@ -201,15 +201,6 @@ Use a small 5V/12V DC fan or hobby motor, powered from its **own separate supply
 
 ---
 
-## Troubleshooting
-
-| Symptom | Likely cause |
-|---|---|
-| WiFi won't connect | Wrong SSID/password, 5GHz-only network (ESP32 needs 2.4GHz), hotspot client isolation, or a per-device approval setting on the phone |
-| Dashboard shows stale/mismatched status vs OLED | Normal small lag between polling cycles; should be under ~1s |
-| Buzzer silent | Confirm with `BuzzerTest.ino` in isolation first; check wiring polarity and GND continuity |
-| OLED/MPU6050 not responding | Run `I2CScanner.ino` — should detect `0x3C` and `0x68`; if neither appears, check SDA/SCL wiring and power |
-| `ArduinoFFT` compile error | Library v2.x is templated — use `ArduinoFFT<double>`, not bare `ArduinoFFT` |
 
 ---
 
@@ -222,6 +213,4 @@ Use a small 5V/12V DC fan or hobby motor, powered from its **own separate supply
 
 ---
 
-## License
 
-*(Add your chosen license here — e.g. MIT, GPL-3.0 — before publishing.)*
